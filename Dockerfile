@@ -1,16 +1,25 @@
-# Dockerfile específico para Jaeger no Railway
+# Dockerfile otimizado para Jaeger no Railway
 FROM jaegertracing/all-in-one:1.53
 
-# Configurações para Railway
+# Instalar curl para healthcheck (Railway requirement)
+USER root
+RUN apk add --no-cache curl bash
+
+# Copiar script de entrypoint
+COPY jaeger-entrypoint.sh /usr/local/bin/jaeger-entrypoint.sh
+RUN chmod +x /usr/local/bin/jaeger-entrypoint.sh
+
+# Configurações de ambiente para Railway
 ENV COLLECTOR_OTLP_ENABLED=true
 ENV SPAN_STORAGE_TYPE=memory
 ENV JAEGER_DISABLED=false
 
-# Expor portas
-EXPOSE 16686 14268 6832 6831
+# Portas para Railway
+EXPOSE 16686 14268 6832/udp 6831/udp 14269 9411
 
-# Railway precisa de um healthcheck
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:16686/ || exit 1
+# Railway healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+  CMD curl -f http://localhost:${PORT:-16686}/api/services 2>/dev/null || curl -f http://localhost:16686/api/services || exit 1
 
-CMD ["--collector.otlp.enabled=true"]
+# Usar o script de entrypoint que suporta a variável PORT do Railway
+ENTRYPOINT ["/usr/local/bin/jaeger-entrypoint.sh"]
